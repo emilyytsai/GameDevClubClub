@@ -91,6 +91,23 @@
     animation: popInChar 0.5s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
 }
 
+/* --- heading hover effects --- */
+.jam-heading-main {
+    transition: color 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.jam-heading-main:hover {
+    color: var(--strawberry2) !important;
+}
+
+.jam-theme-display {
+    transition: color 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.jam-theme-display:hover {
+    color: var(--ripe) !important;
+}
+
 /* --- respect reduced motion --- */
 @media (prefers-reduced-motion: reduce) {
     .jam-live-dot,

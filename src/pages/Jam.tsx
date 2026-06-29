@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, useRef } from 'react';
 import { motion } from 'framer-motion';
 import './Jam.css';
 
@@ -174,7 +174,7 @@ function JoinMeter({ joined, goal }: { joined: number; goal: number }) {
 function ThemeWord({ text }: { text: string }) {
   const chars = useMemo(() => text.split(''), [text]);
   return (
-    <h2 className="font-hiruko text-(--blackberry) leading-none text-5xl sm:text-7xl md:text-8xl text-center break-words">
+    <h2 className="jam-theme-display font-hiruko text-(--blackberry) leading-none text-5xl sm:text-7xl md:text-8xl text-center break-words">
       {chars.map((ch, i) => (
         <span
           key={`${ch}-${i}`}
@@ -311,6 +311,161 @@ function Stat({ value, label }: { value: number; label: string }) {
 }
 
 /* ------------------------------------------------------------------
+   Timeline edition card with expanding circle reveal
+------------------------------------------------------------------- */
+
+interface TimelineCardProps {
+  jam: JamEdition;
+  selected: boolean;
+  isUpcomingCard: boolean;
+  isActiveCard: boolean;
+  onSelect: () => void;
+  delay: number;
+}
+
+function TimelineCard({
+  jam,
+  selected,
+  isUpcomingCard,
+  isActiveCard,
+  onSelect,
+  delay,
+}: TimelineCardProps) {
+  const containerRef = useRef<HTMLButtonElement>(null);
+  const revealRef = useRef<HTMLDivElement>(null);
+  const target = useRef({ x: 0, y: 0, r: 0 });
+  const current = useRef({ x: 0, y: 0, r: 0 });
+
+  useEffect(() => {
+    let frame: number;
+
+    const animate = () => {
+      // Position tracking
+      const posLerp = 0.1;
+      current.current.x += (target.current.x - current.current.x) * posLerp;
+      current.current.y += (target.current.y - current.current.y) * posLerp;
+
+      // Radius: slow grow, fast shrink
+      const isGrowing = target.current.r > 0;
+      const radiusLerp = isGrowing ? 0.03 : 0.15;
+      current.current.r += (target.current.r - current.current.r) * radiusLerp;
+
+      // Apply clip path
+      if (revealRef.current) {
+        revealRef.current.style.clipPath = `circle(${current.current.r}px at ${current.current.x}px ${current.current.y}px)`;
+      }
+
+      frame = requestAnimationFrame(animate);
+    };
+
+    animate();
+    return () => cancelAnimationFrame(frame);
+  }, []);
+
+  const handleMouseMove = (e: React.MouseEvent) => {
+    if (!containerRef.current) return;
+    const rect = containerRef.current.getBoundingClientRect();
+    target.current.x = e.clientX - rect.left;
+    target.current.y = e.clientY - rect.top;
+  };
+
+  const handleMouseEnter = (e: React.MouseEvent) => {
+    if (!containerRef.current) return;
+    const rect = containerRef.current.getBoundingClientRect();
+    const startX = e.clientX - rect.left;
+    const startY = e.clientY - rect.top;
+    current.current.x = startX;
+    current.current.y = startY;
+    target.current.x = startX;
+    target.current.y = startY;
+    target.current.r = 300; // Expand to reveal
+  };
+
+  const handleMouseLeave = () => {
+    target.current.r = 0; // Shrink back
+  };
+
+  return (
+    <motion.button
+      ref={containerRef}
+      type="button"
+      onClick={onSelect}
+      onMouseMove={handleMouseMove}
+      onMouseEnter={handleMouseEnter}
+      onMouseLeave={handleMouseLeave}
+      initial={{ opacity: 0, y: 18 }}
+      whileInView={{ opacity: 1, y: 0 }}
+      viewport={{ once: true, margin: '-10% 0px' }}
+      transition={{ duration: 0.4, delay, ease: [0.34, 1.2, 0.64, 1] }}
+      className={`jam-edition-card no-cursor relative shrink-0 w-44 text-left rounded-xl p-4 ring-2 overflow-hidden ${
+        selected ? 'ring-(--ripe)' : 'ring-transparent'
+      }`}
+      style={{ background: selected ? 'var(--pale)' : 'rgba(255,247,206,0.14)' }}
+    >
+      {/* Base layer */}
+      <div className="relative z-10">
+        <div className="flex items-center justify-between">
+          <span
+            className={`font-bebas text-xl tracking-wide ${
+              selected ? 'text-(--blueberry)' : 'text-(--pale)'
+            }`}
+          >
+            #{pad(jam.number)}
+          </span>
+          {isUpcomingCard ? (
+            <span className={`font-cascadia text-[0.6rem] uppercase tracking-widest ${selected ? 'text-(--grape)' : 'text-(--pale)/60'}`}>
+              soon
+            </span>
+          ) : isActiveCard ? (
+            <span className="flex items-center gap-1">
+              <span className="jam-live-dot h-2 w-2 rounded-full bg-(--strawberry2)" />
+              <span className={`font-cascadia text-[0.6rem] uppercase tracking-widest ${selected ? 'text-(--strawberry1)' : 'text-(--strawberry3)'}`}>
+                live
+              </span>
+            </span>
+          ) : (
+            <span className={`font-cascadia text-[0.6rem] uppercase tracking-widest ${selected ? 'text-(--blueberry)/60' : 'text-(--pale)/60'}`}>
+              done
+            </span>
+          )}
+        </div>
+
+        <p className={`font-hiruko text-lg leading-tight mt-2 ${selected ? 'text-(--blackberry)' : 'text-(--pale)'}`}>
+          {jam.theme}
+        </p>
+
+        <p className={`font-cascadia text-[0.7rem] mt-3 ${selected ? 'text-(--blueberry)/70' : 'text-(--pale)/70'}`}>
+          {isUpcomingCard
+            ? 'Announcement coming'
+            : isActiveCard
+            ? `${jam.joined} joined`
+            : `${jam.stats!.submissions} games \u00b7 ${jam.stats!.participants} devs`}
+        </p>
+      </div>
+
+      {/* Reveal layer (expands on hover) */}
+      <div
+        ref={revealRef}
+        className="absolute inset-0 flex items-center justify-center p-4 z-20 pointer-events-none"
+        style={{ clipPath: 'circle(0px at 0px 0px)', background: 'rgba(70, 40, 89, 0.95)' }}
+      >
+        <div className="text-center">
+          <p className="font-bebas text-sm text-(--pale) mb-2">#{pad(jam.number)}</p>
+          <p className="font-hiruko text-base text-(--ripe) leading-tight">{jam.theme}</p>
+          <p className="font-cascadia text-xs text-(--pale) mt-2">
+            {isUpcomingCard
+              ? 'Coming soon'
+              : isActiveCard
+              ? `${jam.goal - jam.joined} spots left`
+              : `${jam.stats!.participants} creators`}
+          </p>
+        </div>
+      </div>
+    </motion.button>
+  );
+}
+
+/* ------------------------------------------------------------------
    Timeline archive — selecting an edition swaps the hero
 ------------------------------------------------------------------- */
 
@@ -343,57 +498,15 @@ function Timeline({
           const isUpcomingCard = isUpcoming(jam);
           const isActiveCard = isActive(jam);
           return (
-            <motion.button
+            <TimelineCard
               key={jam.id}
-              type="button"
-              onClick={() => onSelect(jam.id)}
-              initial={{ opacity: 0, y: 18 }}
-              whileInView={{ opacity: 1, y: 0 }}
-              viewport={{ once: true, margin: '-10% 0px' }}
-              transition={{ duration: 0.4, delay: i * 0.06, ease: [0.34, 1.2, 0.64, 1] }}
-              className={`jam-edition-card no-cursor shrink-0 w-44 text-left rounded-xl p-4 ring-2 ${
-                selected ? 'ring-(--ripe)' : 'ring-transparent'
-              }`}
-              style={{ background: selected ? 'var(--pale)' : 'rgba(255,247,206,0.14)' }}
-            >
-              <div className="flex items-center justify-between">
-                <span
-                  className={`font-bebas text-xl tracking-wide ${
-                    selected ? 'text-(--blueberry)' : 'text-(--pale)'
-                  }`}
-                >
-                  #{pad(jam.number)}
-                </span>
-                {isUpcomingCard ? (
-                  <span className={`font-cascadia text-[0.6rem] uppercase tracking-widest ${selected ? 'text-(--grape)' : 'text-(--pale)/60'}`}>
-                    soon
-                  </span>
-                ) : isActiveCard ? (
-                  <span className="flex items-center gap-1">
-                    <span className="jam-live-dot h-2 w-2 rounded-full bg-(--strawberry2)" />
-                    <span className={`font-cascadia text-[0.6rem] uppercase tracking-widest ${selected ? 'text-(--strawberry1)' : 'text-(--strawberry3)'}`}>
-                      live
-                    </span>
-                  </span>
-                ) : (
-                  <span className={`font-cascadia text-[0.6rem] uppercase tracking-widest ${selected ? 'text-(--blueberry)/60' : 'text-(--pale)/60'}`}>
-                    done
-                  </span>
-                )}
-              </div>
-
-              <p className={`font-hiruko text-lg leading-tight mt-2 ${selected ? 'text-(--blackberry)' : 'text-(--pale)'}`}>
-                {jam.theme}
-              </p>
-
-              <p className={`font-cascadia text-[0.7rem] mt-3 ${selected ? 'text-(--blueberry)/70' : 'text-(--pale)/70'}`}>
-                {isUpcomingCard
-                  ? 'Announcement coming'
-                  : isActiveCard
-                  ? `${jam.joined} joined`
-                  : `${jam.stats!.submissions} games \u00b7 ${jam.stats!.participants} devs`}
-              </p>
-            </motion.button>
+              jam={jam}
+              selected={selected}
+              isUpcomingCard={isUpcomingCard}
+              isActiveCard={isActiveCard}
+              onSelect={() => onSelect(jam.id)}
+              delay={i * 0.06}
+            />
           );
         })}
       </div>
@@ -420,7 +533,7 @@ function Jam() {
             <span className="font-cascadia text-xs uppercase tracking-[0.35em] text-(--grape)">
               game dev club club presents
             </span>
-            <h1 className="font-hiruko text-4xl sm:text-6xl text-(--blackberry) mt-2">
+            <h1 className="jam-heading-main font-hiruko text-4xl sm:text-6xl text-(--blackberry) mt-2">
               GDCC JAM #{pad(selected.number)}
             </h1>
             <p className="font-capriola text-(--blueberry) mt-1">{selected.title}</p>
